@@ -248,21 +248,12 @@ npm run lint
 
 ## 📄 License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE) — Copyright (c) 2026 Asim Aftab.
 
-```
-Copyright (c) 2026 Asim Aftab
-Copyright (c) 2025 Bjorn Melin
-```
-
-## 🙏 Attribution
-
-This project builds on earlier MIT-licensed work by Bjorn Melin. The original copyright notice
-is retained in [`LICENSE`](LICENSE) as the MIT License requires.
-
-This fork is maintained by [@AsimAftab](https://github.com/AsimAftab) and substantially rewrote
-the Anthropic translation layer to add agentic tool calling, real SSE streaming, dynamic model
-discovery, and support for Claude Opus 5.
+Originally based on earlier MIT-licensed work by Bjorn Melin, whose copyright notice is retained
+in [`LICENSE`](LICENSE) as that license requires. The Anthropic translation layer has since been
+substantially rewritten to add agentic tool calling, real SSE streaming, dynamic model discovery,
+and Claude Opus 5 support.
 
 ## 🤝 Contributing
 
