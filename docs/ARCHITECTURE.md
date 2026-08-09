@@ -27,13 +27,15 @@ OpenAI-compatible endpoint. Everything in between is translation.
 | `src/utils/model-mapper.ts` | Model name resolution, `/v1/models` payload |
 | `src/utils/copilot-headers.ts` | Upstream header construction |
 | `src/services/auth-service.ts` | OAuth device flow, token refresh, API base discovery |
+| `scripts/configure-claude-code.mjs` | Client setup: backs up and rewrites Claude Code settings |
 
 ## Request lifecycle
 
 1. **Rate limit** — `rateLimiter()` assigns `res.locals.sessionId`. Request-count based only.
 2. **Auth** — `requireAuth` calls `ensureValidCopilotToken()`, which refreshes an expired
    token *before* failing. (Previously the 401 was returned first, making refresh unreachable.)
-3. **Validate** — `messages`, `model`, `max_tokens` and per-message roles.
+3. **Validate** — `messages`, `model`, `max_tokens` and per-message roles
+   (`user`, `assistant` or `system`).
 4. **Resolve model** — `resolveModel()` against the live catalog (see `MODELS.md`).
 5. **Translate request** — `convertMessages()` + `convertTools()`.
 6. **Build headers** — `buildCopilotHeaders()`, including `X-Initiator` and vision flags.
@@ -54,6 +56,14 @@ OpenAI-compatible endpoint. Everything in between is translation.
 | `tool_result` (user) | a separate `role:"tool"` message with `tool_call_id` |
 | `thinking`, `redacted_thinking` | dropped — Copilot never round-trips them |
 | `system` (string or block array) | leading `role:"system"` message |
+| `role:"system"` message inside `messages` | text hoisted into the leading `role:"system"` message |
+
+**System-message hoisting.** Claude Code 2.1.x appends a `role:"system"` message *inside*
+`messages` carrying the Agent-tool catalog. Copilot rejects a system turn that follows
+user/assistant content, so `convertMessages()` strips those messages from the conversation and
+appends their text to the leading system prompt (top-level `system` first, then inline blocks in
+order). Rejecting the role instead — as the proxy originally did — breaks every Claude Code turn
+with `400 messages: each message must have a valid role`.
 
 **Ordering rule.** Copilot enforces the OpenAI contract: an assistant message with
 `tool_calls` must be followed by the matching `role:"tool"` messages *before* any further
@@ -180,6 +190,48 @@ The Copilot token exchange returns a per-plan host in `endpoints.api` — indivi
 1. `COPILOT_API_BASE` env override
 2. `endpoints.api` from the token
 3. `https://api.githubcopilot.com` fallback
+
+## Token persistence
+
+OAuth tokens (the GitHub token and the short-lived Copilot token) are written as JSON to
+`COPILOT_PROXY_DATA_DIR`, defaulting to `~/.github-copilot-proxy`. They are reloaded on startup
+so a restart does not require re-authentication.
+
+The Docker image sets `COPILOT_PROXY_DATA_DIR=/data` and declares it as a volume — without a
+mounted volume, every container rebuild would force a fresh device-flow login. If the directory
+cannot be created the proxy still starts, logging that authentication will not persist.
+
+## Client configuration
+
+`scripts/configure-claude-code.mjs` (`npm run setup:claude`, `copilot-claude-proxy configure`)
+wires Claude Code to the proxy. It is dependency-free Node ESM so it runs anywhere without a
+build step.
+
+- Existing `~/.claude/settings.json` and `~/.claude/.credentials.json` are **renamed** into
+  `~/.claude/.copilot-proxy-backups/<timestamp>/` — never deleted. Moving them into a dot
+  directory guarantees Claude Code cannot discover them under any glob, which matters because a
+  lingering Anthropic subscription login otherwise bypasses the proxy entirely.
+- A `manifest.json` in that folder records every move, which files were written, and whether the
+  run has been restored; `--restore [id]` reverses it exactly.
+- Writes are atomic (`*.tmp` + rename) and moves roll back if the write fails.
+- `--restore` refuses to overwrite a settings file that no longer carries the proxy's sentinel
+  `ANTHROPIC_AUTH_TOKEN: "sk-dummy"` unless `--force` is passed.
+
+## Deployment
+
+`docker compose up -d --build` runs the proxy as a background service.
+
+| Concern | Handling |
+|---|---|
+| Base image | `node:22-alpine` — Node 20+ required, the build emits `import ... with { type: 'json' }` |
+| Persistence | Named volume on `/data` via `COPILOT_PROXY_DATA_DIR` |
+| Signals | `tini` as PID 1, so `docker stop` terminates immediately instead of timing out |
+| Health | `HEALTHCHECK` polls `/health`; compose reports `healthy` |
+| User | Runs as non-root `node` (uid 1000); `/data` and `/app` are chowned at build time |
+| Restart | `restart: unless-stopped` — survives reboots |
+
+`HOST` defaults to `0.0.0.0` in the image so the port publishes correctly; the setup script
+rewrites a wildcard host to `localhost` when generating the client base URL.
 
 ## Rate limiting
 

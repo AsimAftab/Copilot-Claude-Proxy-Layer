@@ -35,6 +35,7 @@ Full detail lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 | `src/services/auth-service.ts` | OAuth device flow, token refresh, API base discovery |
 | `src/utils/model-mapper.ts` | Model name resolution |
 | `src/utils/copilot-headers.ts` | Upstream header construction |
+| `scripts/configure-claude-code.mjs` | `npm run setup:claude` — backs up and rewrites Claude Code settings |
 
 ## Gotchas that will bite you
 
@@ -56,6 +57,8 @@ These were discovered by probing the live API. Violating them silently breaks th
 7. **Claude Code sends `role:"system"` messages inside `messages`** (2.1.x appends the Agent-tool
    catalog as a trailing system turn). Accept it and hoist the text into the leading system prompt —
    Copilot rejects a system turn placed after user/assistant content.
+8. **OAuth tokens persist to `COPILOT_PROXY_DATA_DIR`** (default `~/.github-copilot-proxy`, `/data`
+   in Docker). Anything containerised must mount that path or every rebuild forces a re-login.
 
 ## Development
 
@@ -66,7 +69,12 @@ npm run dev           # Development mode
 npm start             # Production mode
 npm test              # Run tests
 npm run lint          # Lint
+npm run setup:claude  # Point Claude Code at the proxy (--restore to undo)
+
+docker compose up -d --build   # Run as a background service
 ```
+
+Requires Node 20+ — the build emits `import ... with { type: 'json' }`, which Node 18 cannot load.
 
 Run build, lint, and tests before committing. Tests use Jest with ESM
 (`node --experimental-vm-modules`) and `jest.unstable_mockModule` for mocking.

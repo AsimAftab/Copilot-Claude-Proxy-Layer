@@ -29,6 +29,12 @@
   `--keep-credentials`, `--dry-run`, `--yes`, `--force`
 - Preflight probes against `/health`, `/auth/status` and `/v1/models` that warn (never block) when
   the proxy is down, unauthenticated, or the selected model is not in the live catalog
+- README troubleshooting table; Docker, token-persistence and client-configuration sections in
+  `docs/ARCHITECTURE.md`
+
+### Changed
+- **Minimum Node version is now 20** (`engines`, README badge, prerequisites). The CI matrix drops
+  18.x and adds 22.x — Node 18 could never have run the built output
 
 ## [v1.0.0] - 2026-08-08
 

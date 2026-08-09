@@ -12,7 +12,9 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        # Node 20+ only: the build emits `import ... with { type: 'json' }`,
+        # which Node 18 cannot load.
+        node-version: [20.x, 22.x]
 
     steps:
     - uses: actions/checkout@v3

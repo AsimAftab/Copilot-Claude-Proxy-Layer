@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18.0+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20.0+-green.svg)](https://nodejs.org/)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
 > ⚠️ **Disclaimer**: This project is for **educational purposes only**. It demonstrates API proxy patterns and OAuth device flow authentication. Use at your own risk and ensure compliance with GitHub Copilot's Terms of Service.
@@ -22,6 +22,8 @@ It also exposes an OpenAI-compatible endpoint for Cursor IDE.
 - **Anthropic API Compatibility**: Implements the Anthropic Messages API (`/v1/messages`, `/v1/models`, `/v1/messages/count_tokens`)
 - **OpenAI API Compatibility**: OpenAI-format endpoint for Cursor IDE
 - **Vision Support**: Image content blocks forwarded as multimodal parts
+- **One-Command Claude Code Setup**: `npm run setup:claude` backs up your existing Claude Code config and points it at the proxy — reversible with `--restore`
+- **Runs as a Background Service**: `docker compose up -d` with persistent auth, health checks, and automatic restart
 - **Endpoint Discovery**: Resolves your plan's real API host (individual / enterprise) from the token
 - **Seamless Authentication**: GitHub OAuth device flow with automatic token refresh
 
@@ -29,7 +31,7 @@ It also exposes an OpenAI-compatible endpoint for Cursor IDE.
 
 ## 📋 Prerequisites
 
-- Node.js 18.0 or higher
+- Node.js 20.0 or higher (or Docker — see below)
 - A GitHub Copilot subscription with access to Claude models
   (Opus-class models require Copilot **Pro+**, **Max**, **Business**, or **Enterprise**)
 - Claude Code or Cursor IDE
@@ -328,6 +330,22 @@ npm test
 ```bash
 npm run lint
 ```
+
+### Configuring a client:
+```bash
+npm run setup:claude -- --help
+```
+
+## 🩺 Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `400 messages: each message must have a valid role` | An older proxy build. Claude Code 2.1.x sends a `role:"system"` message inside `messages`; pull the latest and rebuild (`npm run build`, or `docker compose up -d --build`) |
+| `401 GitHub Copilot authentication required` | Not signed in, or the token store was lost. Re-authenticate at `/auth.html`. In Docker, make sure the `/data` volume is mounted |
+| Claude Code ignores the proxy | A project-level `.claude/settings.local.json` overrides the global file. Run `npm run setup:claude -- --project`, or check that no real Anthropic credentials remain — `npm run setup:claude` moves them aside for you |
+| `claude-opus-5` missing from `/v1/models` | Your Copilot plan isn't entitled to it. See [`docs/MODELS.md`](docs/MODELS.md) |
+| Container exits immediately | You're on a stale image built on Node 18. Rebuild — Node 20+ is required |
+| Port 3000 already in use | Another proxy instance is running. Stop it, or set `PORT` and re-run `npm run setup:claude -- --port <n>` |
 
 ## 📄 License
 
