@@ -5,7 +5,7 @@
  * Usage: copilot-claude-proxy [start|--help|--version]
  */
 
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 
@@ -35,8 +35,14 @@ Usage:
 
 Commands:
   start       Start the proxy server (default)
+  configure   Point Claude Code at this proxy (backs up any existing config)
   --version   Show version number
   --help      Show this help message
+
+Configure options:
+  configure --help          Show all configuration options
+  configure --dry-run       Preview changes without applying them
+  configure --restore       Undo a previous configure run
 
 Configuration:
   PORT                Server port (default: 3000)
@@ -47,6 +53,7 @@ Configuration:
 
 Example:
   copilot-claude-proxy start
+  copilot-claude-proxy configure
   PORT=8080 copilot-claude-proxy
 
 After starting, visit http://localhost:3000/auth.html to authenticate with GitHub.
@@ -56,8 +63,14 @@ Documentation: ${packageJson.homepage}
   process.exit(0);
 }
 
+if (command === 'configure') {
+  const scriptPath = join(__dirname, '..', 'scripts', 'configure-claude-code.mjs');
+  const { main } = await import(pathToFileURL(scriptPath).href);
+  process.exit(await main(args.slice(1)));
+}
+
 if (command === 'start' || !command.startsWith('-')) {
   // Import and start the server
   const serverPath = join(__dirname, '..', 'dist', 'index.js');
-  await import(serverPath);
+  await import(pathToFileURL(serverPath).href);
 }

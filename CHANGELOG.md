@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **One-command Claude Code setup** — `npm run setup:claude` (or `copilot-claude-proxy configure`)
+  renames any existing Claude Code configuration (`~/.claude/settings.json`,
+  `~/.claude/.credentials.json`) into `~/.claude/.copilot-proxy-backups/<timestamp>/` so it is no
+  longer detected but never lost, then writes a fresh gateway-pointing settings file
+- `configure --restore [id]` / `--list` to undo a setup run and inspect backup sets
+- `configure` flags: `--project`, `--port`, `--host`, `--model`, `--small-model`, `--merge`,
+  `--keep-credentials`, `--dry-run`, `--yes`, `--force`
+- Preflight probes against `/health`, `/auth/status` and `/v1/models` that warn (never block) when
+  the proxy is down, unauthenticated, or the selected model is not in the live catalog
+
 ## [v1.0.0] - 2026-08-08
 
 Major rewrite of the Anthropic translation layer. Claude Code's agentic harness now works

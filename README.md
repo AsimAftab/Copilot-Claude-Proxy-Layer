@@ -81,6 +81,48 @@ Other endpoints: `GET /auth/status`, `POST /auth/logout`.
 
 ## 🤖 Configuration with Claude Code
 
+### Automatic setup (recommended)
+
+```bash
+npm run setup:claude
+```
+
+(or `copilot-claude-proxy configure` if you installed the CLI globally)
+
+The script:
+
+1. **Renames** any existing Claude Code configuration — `~/.claude/settings.json` and
+   `~/.claude/.credentials.json` — into `~/.claude/.copilot-proxy-backups/<timestamp>/`.
+   Claude Code no longer detects the old setup, but **nothing is deleted**.
+2. **Writes** a fresh `~/.claude/settings.json` pointing at this gateway.
+3. Prints the exact command to undo everything.
+
+It shows a plan and asks for confirmation before touching anything.
+
+| Option | Effect |
+|--------|--------|
+| `--project` | Configure `./.claude/settings.local.json` instead of the global file |
+| `--port <n>` / `--host <h>` | Override the proxy address (defaults come from `.env`) |
+| `--model <id>` / `--small-model <id>` | Override `ANTHROPIC_MODEL` / `ANTHROPIC_SMALL_FAST_MODEL` |
+| `--merge` | Keep existing non-`env` keys (permissions, hooks, statusLine) |
+| `--keep-credentials` | Leave `~/.claude/.credentials.json` in place |
+| `--dry-run` | Show the plan, change nothing |
+| `--yes` | Skip the confirmation prompt |
+| `--list` | List backup sets |
+| `--restore [id]` | Put the previous configuration back |
+
+> ⚠️ Moving `.credentials.json` signs Claude Code out of your Anthropic account until you run
+> `--restore`. That is deliberate — otherwise an existing subscription login can bypass the proxy.
+> Pass `--keep-credentials` if you'd rather leave it alone.
+
+To undo:
+
+```bash
+npm run setup:claude -- --restore
+```
+
+### Manual setup
+
 1. Start the proxy server:
    ```bash
    npm start
