@@ -27,6 +27,7 @@ import {
 } from './translation/request.js';
 import { convertToAnthropicResponse } from './translation/response.js';
 import { logger } from '../utils/logger.js';
+import { trace } from '../utils/trace.js';
 
 const MAX_RETRIES = 3;
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
@@ -120,6 +121,8 @@ export async function callCopilot(
   const body = await buildCopilotRequest(request, stream);
   const endpoint = `${getCopilotApiBase()}/chat/completions`;
 
+  trace('request', { stream, anthropic: request, copilot: body });
+
   const headers = buildCopilotHeaders({
     token: copilotToken,
     isAgent: isAgentConversation(request),
@@ -212,7 +215,10 @@ export async function makeAnthropicCompletionRequest(
   const response = await callCopilot(request, copilotToken, false, signal);
   const data = (await response.json()) as OpenAIChatResponse;
 
-  return convertToAnthropicResponse(data, request.model);
+  const translated = convertToAnthropicResponse(data, request.model);
+  trace('response', { stream: false, copilot: data, anthropic: translated });
+
+  return translated;
 }
 
 /**

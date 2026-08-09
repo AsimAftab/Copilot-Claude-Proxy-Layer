@@ -12,6 +12,9 @@ services:
     environment:
       DEFAULT_MODEL: claude-opus-5
       LOG_LEVEL: info
+      # Set to 1 to append full request/response traces to /data/trace.jsonl.
+      # Off by default: traces contain complete prompt text.
+      COPILOT_PROXY_TRACE: "${COPILOT_PROXY_TRACE:-0}"
     healthcheck:
       test:
         - CMD

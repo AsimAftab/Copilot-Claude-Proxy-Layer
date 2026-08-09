@@ -92,6 +92,23 @@ Run build, lint, and tests before committing. Tests use Jest with ESM
 > ⚠️ Mocks encode assumptions about the upstream API. When changing translation behaviour,
 > verify against the real Copilot API — a full green suite proved insufficient once already.
 
+### Tracing real traffic
+
+Set `COPILOT_PROXY_TRACE=1` to append one JSON line per turn to
+`$COPILOT_PROXY_DATA_DIR/trace.jsonl` (`/data/trace.jsonl` in Docker), containing the Anthropic
+request, the translated Copilot payload, the raw upstream SSE frames and the events sent back:
+
+```bash
+COPILOT_PROXY_TRACE=1 docker compose up -d --build
+docker compose exec proxy cat /data/trace.jsonl
+```
+
+Off by default because traces contain full prompt text. This is the fastest way to tell a proxy bug
+from a client-side one — **if a misbehaving client produced no trace record and no
+`POST /v1/messages` log line, the proxy was never called and the fault is not here.** Claude Code's
+auto-approval classifier, for instance, blocks tool calls entirely client-side
+("Auto mode could not evaluate this action"), without ever reaching the proxy.
+
 ## Quick Reference
 
 ```bash

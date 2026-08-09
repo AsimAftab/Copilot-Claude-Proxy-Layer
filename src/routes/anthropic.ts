@@ -24,6 +24,7 @@ import { getAvailableModels } from '../utils/model-mapper.js';
 import { AnthropicMessageRequest, ContentBlock } from '../types/anthropic.js';
 import { OpenAIStreamChunk } from '../types/copilot-chat.js';
 import { logger } from '../utils/logger.js';
+import { trace, isTraceEnabled } from '../utils/trace.js';
 import { trackRequest } from '../services/usage-service.js';
 
 export const anthropicRoutes = express.Router();
@@ -260,6 +261,10 @@ async function handleStreaming(
 ): Promise<void> {
   const upstream = await callCopilot(request, copilotToken, true, signal);
 
+  const tracing = isTraceEnabled();
+  const sentEvents: Array<{ event: string; data: unknown }> = [];
+  const rawFrames: string[] = [];
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -267,6 +272,7 @@ async function handleStreaming(
   res.flushHeaders?.();
 
   const send = (event: string, data: unknown) => {
+    if (tracing) sentEvents.push({ event, data });
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
@@ -296,6 +302,8 @@ async function handleStreaming(
     let buffer = '';
 
     const processFrame = (frame: string) => {
+      if (tracing) rawFrames.push(frame);
+
       for (const line of frame.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) continue;
@@ -348,9 +356,27 @@ async function handleStreaming(
     const usage = translator.getUsage();
     trackRequest(sessionId, usage.input_tokens + usage.output_tokens);
 
+    if (tracing) {
+      trace('response', {
+        stream: true,
+        model: request.model,
+        upstreamFrames: rawFrames,
+        anthropicEvents: sentEvents,
+      });
+    }
+
     res.end();
   } catch (error) {
     logger.error('Error in Anthropic streaming:', error);
+
+    if (tracing) {
+      trace('stream_error', {
+        model: request.model,
+        message: error instanceof Error ? error.message : String(error),
+        upstreamFrames: rawFrames,
+        anthropicEvents: sentEvents,
+      });
+    }
 
     if (!res.writableEnded) {
       send('error', {
