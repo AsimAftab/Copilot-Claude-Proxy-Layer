@@ -8,6 +8,9 @@ yarn-error.log
 .git
 .github
 .gitignore
+.husky
+.beads
+.claude
 
 # Build files
 dist

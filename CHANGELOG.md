@@ -3,12 +3,23 @@
 ## [Unreleased]
 
 ### Fixed
+- **Docker image was unrunnable** — it was pinned to `node:18-alpine`, but the built output uses
+  `import ... with { type: 'json' }` import attributes that Node 18 cannot load. Bumped to
+  `node:22-alpine`
+- **Docker auth did not persist** — tokens were written to the container's home directory and lost
+  on every `docker rm` / rebuild. They now live in `COPILOT_PROXY_DATA_DIR` (`/data` in the image),
+  backed by a volume
 - **`400 messages: each message must have a valid role`** with Claude Code 2.1.x — Claude Code
   appends a `role: "system"` message *inside* `messages` (the Agent-tool catalog). The proxy now
   accepts it and hoists its text into the leading system prompt, since Copilot rejects a system
   turn that follows user/assistant content
 
 ### Added
+- **`docker-compose.yml`** for a one-command background service
+  (`docker compose up -d --build`) with `restart: unless-stopped` and a named token volume
+- Docker image now runs as the non-root `node` user, uses `tini` for clean SIGTERM handling, and
+  declares a `HEALTHCHECK` against `/health`
+- `COPILOT_PROXY_DATA_DIR` environment variable to relocate OAuth token storage
 - **One-command Claude Code setup** — `npm run setup:claude` (or `copilot-claude-proxy configure`)
   renames any existing Claude Code configuration (`~/.claude/settings.json`,
   `~/.claude/.credentials.json`) into `~/.claude/.copilot-proxy-backups/<timestamp>/` so it is no

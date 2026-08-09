@@ -7,8 +7,10 @@ import { config } from '../config/index.js';
 import { CopilotToken, VerificationResponse } from '../types/github.js';
 import { logger } from '../utils/logger.js';
 
-// Token storage path (persistent across restarts)
-const TOKEN_STORAGE_DIR = path.join(os.homedir(), '.github-copilot-proxy');
+// Token storage path (persistent across restarts). COPILOT_PROXY_DATA_DIR lets
+// containers point this at a mounted volume so auth survives `docker rm`.
+const TOKEN_STORAGE_DIR =
+  process.env.COPILOT_PROXY_DATA_DIR || path.join(os.homedir(), '.github-copilot-proxy');
 const GITHUB_TOKEN_FILE = path.join(TOKEN_STORAGE_DIR, 'github-token.json');
 const COPILOT_TOKEN_FILE = path.join(TOKEN_STORAGE_DIR, 'copilot-token.json');
 
@@ -21,8 +23,16 @@ let pendingAuth: any = null;
 let tokenRefreshInterval: NodeJS.Timeout | null = null;
 
 // Ensure token storage directory exists
-if (!fs.existsSync(TOKEN_STORAGE_DIR)) {
-  fs.mkdirSync(TOKEN_STORAGE_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(TOKEN_STORAGE_DIR)) {
+    fs.mkdirSync(TOKEN_STORAGE_DIR, { recursive: true });
+  }
+} catch (error) {
+  logger.error(
+    `Cannot create token storage directory ${TOKEN_STORAGE_DIR}. ` +
+      'Authentication will not persist across restarts.',
+    error
+  );
 }
 
 /**

@@ -1,0 +1,27 @@
+services:
+  proxy:
+    build: .
+    image: copilot-claude-proxy:latest
+    container_name: copilot-claude-proxy
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # OAuth tokens — keeps you signed in across rebuilds and restarts.
+      - copilot-proxy-data:/data
+    environment:
+      DEFAULT_MODEL: claude-opus-5
+      LOG_LEVEL: info
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  copilot-proxy-data:

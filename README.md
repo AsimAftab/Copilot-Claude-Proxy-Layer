@@ -46,6 +46,47 @@ npm start
 
 The server starts at http://localhost:3000
 
+### 🐳 Running with Docker (background service)
+
+Best option if you want the proxy running permanently without keeping a terminal open.
+
+```bash
+docker compose up -d --build
+```
+
+That's it — the container restarts with Docker (`restart: unless-stopped`), so it survives
+reboots and you never have to start it manually again.
+
+```bash
+docker compose logs -f      # follow logs
+docker compose ps           # health status
+docker compose down         # stop (auth is kept in the volume)
+```
+
+Or without compose:
+
+```bash
+docker build -t copilot-claude-proxy .
+docker run -d --name copilot-claude-proxy --restart unless-stopped \
+  -p 3000:3000 -v copilot-proxy-data:/data copilot-claude-proxy
+```
+
+Then authenticate once at http://localhost:3000/auth.html.
+
+Notes:
+
+- OAuth tokens are stored in `/data` (set via `COPILOT_PROXY_DATA_DIR`). The named volume keeps
+  you signed in across rebuilds, restarts and `docker rm`. **Don't skip the volume** or you'll
+  re-authenticate every time.
+- The image runs as the non-root `node` user and ships a `HEALTHCHECK`, so `docker ps` reports
+  `healthy` once the proxy is serving.
+- Node 20+ is required (the image uses `node:22-alpine`); Node 18 cannot load the built output.
+- Already authenticated on the host? Seed the volume instead of re-authenticating:
+  ```bash
+  docker cp ~/.github-copilot-proxy/. copilot-claude-proxy:/data/
+  docker restart copilot-claude-proxy
+  ```
+
 ## 🔑 Authentication (getting credentials)
 
 You do **not** create an API key. The proxy uses your existing GitHub Copilot subscription via
