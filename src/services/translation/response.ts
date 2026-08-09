@@ -128,13 +128,22 @@ export function convertToAnthropicResponse(
     finishReasons.find((r) => r === 'tool_calls' || r === 'function_call') ??
     finishReasons[0];
 
+  let stopReason = mapStopReason(finishReason) ?? 'end_turn';
+
+  // Copilot frequently reports finish_reason "stop" even when it emitted tool
+  // calls. Claude Code only dispatches tools when stop_reason is "tool_use", so
+  // a mismatch stalls the agent loop with the call rendered but never executed.
+  if (stopReason !== 'max_tokens' && content.some((b) => b.type === 'tool_use')) {
+    stopReason = 'tool_use';
+  }
+
   return {
     id: generateMessageId(),
     type: 'message',
     role: 'assistant',
     content,
     model,
-    stop_reason: mapStopReason(finishReason) ?? 'end_turn',
+    stop_reason: stopReason,
     stop_sequence: null,
     usage: mapUsage(data.usage),
   };
@@ -149,8 +158,10 @@ interface BlockState {
   type: 'text' | 'tool_use';
 }
 
-interface ToolBlockState extends BlockState {
+interface ToolBlockState {
   type: 'tool_use';
+  /** Assigned lazily on emission so indices stay gapless and ordered. */
+  anthropicIndex: number | null;
   id: string;
   name?: string;
   pendingArguments: string;
@@ -177,6 +188,8 @@ export class StreamTranslator {
    * other tool call are buffered until this one closes.
    */
   private activeToolKey: number | string | null = null;
+  /** True once any tool_use block has been emitted in this turn. */
+  private emittedToolUse = false;
   private stopReason: AnthropicStopReason = null;
   private usage: AnthropicUsage = { input_tokens: 0, output_tokens: 0 };
   private sawUsage = false;
@@ -259,7 +272,9 @@ export class StreamTranslator {
         events.push(...this.closeTextBlock());
 
         block = {
-          anthropicIndex: this.nextIndex++,
+          // Index is allocated when the block is actually emitted, so a
+          // buffered or discarded call never leaves a gap in the sequence.
+          anthropicIndex: null,
           type: 'tool_use',
           id: toolCall.id || `toolu_${uuidv4().replace(/-/g, '').substring(0, 20)}`,
           name: toolCall.function?.name,
@@ -313,11 +328,20 @@ export class StreamTranslator {
     // zeroed when the upstream stream omits a usage chunk.
     this.usage = { ...this.usage, output_tokens: outputTokens };
 
+    // Copilot frequently ends a tool-calling turn with finish_reason "stop"
+    // (or no finish_reason at all). Claude Code only dispatches tools when
+    // stop_reason is "tool_use", so without this the turn renders the tool
+    // call and then hangs forever waiting for a result it never requested.
+    let stopReason = this.stopReason ?? 'end_turn';
+    if (this.emittedToolUse && stopReason !== 'max_tokens') {
+      stopReason = 'tool_use';
+    }
+
     events.push({
       event: 'message_delta',
       data: {
         type: 'message_delta',
-        delta: { stop_reason: this.stopReason ?? 'end_turn', stop_sequence: null },
+        delta: { stop_reason: stopReason, stop_sequence: null },
         usage: { output_tokens: outputTokens },
       },
     });
@@ -350,6 +374,9 @@ export class StreamTranslator {
 
   private startToolBlock(block: ToolBlockState): Array<{ event: string; data: unknown }> {
     block.started = true;
+    block.anthropicIndex = this.nextIndex++;
+    this.emittedToolUse = true;
+
     const events: Array<{ event: string; data: unknown }> = [
       {
         event: 'content_block_start',
@@ -359,7 +386,7 @@ export class StreamTranslator {
           content_block: {
             type: 'tool_use',
             id: block.id,
-            name: block.name ?? '',
+            name: block.name,
             input: {},
           },
         },
@@ -382,7 +409,7 @@ export class StreamTranslator {
       event: 'content_block_delta',
       data: {
         type: 'content_block_delta',
-        index: block.anthropicIndex,
+        index: block.anthropicIndex as number,
         delta: { type: 'input_json_delta', partial_json: partialJson },
       },
     };
@@ -401,6 +428,13 @@ export class StreamTranslator {
     });
 
     for (const [key, block] of ordered) {
+      // A tool call whose name never arrived cannot be dispatched by Claude
+      // Code; emitting it would stall the harness on an unknown tool.
+      if (!block.started && !block.name) {
+        this.closedToolKeys.add(key);
+        continue;
+      }
+
       if (!block.started) {
         events.push(...this.startToolBlock(block));
       } else if (block.pendingArguments) {

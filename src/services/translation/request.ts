@@ -195,6 +195,76 @@ function convertMessage(message: AnthropicMessage): OpenAIChatMessage[] {
 }
 
 /**
+ * Enforce OpenAI's tool-message contract on a converted message list.
+ *
+ * Copilot rejects the whole request with a 400 if either invariant is broken:
+ *
+ *  - a `role:"tool"` message whose `tool_call_id` has no preceding assistant
+ *    `tool_calls` entry (happens when Claude Code prunes an old assistant turn
+ *    out of the context window but keeps its result), and
+ *  - an assistant `tool_calls` entry with no following `role:"tool"` reply
+ *    (happens when a turn is cancelled or a tool permission prompt is denied).
+ *
+ * A rejected request looks to Claude Code like an unusable response, which is
+ * why a denied/cancelled tool call can wedge every subsequent turn. Orphaned
+ * tool replies are dropped and missing ones are synthesised.
+ */
+function reconcileToolMessages(messages: OpenAIChatMessage[]): OpenAIChatMessage[] {
+  const answered = new Set<string>();
+  const issued = new Set<string>();
+
+  for (const message of messages) {
+    for (const call of message.tool_calls ?? []) {
+      if (call.id) issued.add(call.id);
+    }
+  }
+
+  const result: OpenAIChatMessage[] = [];
+  let openAssistant: OpenAIChatMessage | null = null;
+
+  /** Emit placeholder replies for any call the model never got an answer to. */
+  const flushPending = () => {
+    if (!openAssistant?.tool_calls?.length) {
+      openAssistant = null;
+      return;
+    }
+    for (const call of openAssistant.tool_calls) {
+      if (call.id && !answered.has(call.id)) {
+        answered.add(call.id);
+        result.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: 'Tool call was not completed.',
+        });
+      }
+    }
+    openAssistant = null;
+  };
+
+  for (const message of messages) {
+    if (message.role === 'tool') {
+      const id = message.tool_call_id;
+      // Drop replies to calls we never issued, and duplicate replies.
+      if (!id || !issued.has(id) || answered.has(id)) continue;
+      answered.add(id);
+      result.push(message);
+      continue;
+    }
+
+    flushPending();
+    result.push(message);
+
+    if (message.role === 'assistant' && message.tool_calls?.length) {
+      openAssistant = message;
+    }
+  }
+
+  flushPending();
+
+  return result;
+}
+
+/**
  * Convert a full Anthropic message list to OpenAI format.
  */
 export function convertMessages(
@@ -222,7 +292,7 @@ export function convertMessages(
     result.push(...convertMessage(message));
   }
 
-  return result;
+  return reconcileToolMessages(result);
 }
 
 /**

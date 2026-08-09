@@ -94,6 +94,10 @@ describe('request translation', () => {
     it('emits tool_result as a tool message before remaining user text', () => {
       const messages: AnthropicMessage[] = [
         {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }],
+        },
+        {
           role: 'user',
           content: [
             { type: 'text', text: 'and now continue' },
@@ -105,16 +109,20 @@ describe('request translation', () => {
       const result = convertMessages(messages);
 
       // Ordering matters: OpenAI requires tool results directly after the call.
-      expect(result[0]).toEqual({
+      expect(result[1]).toEqual({
         role: 'tool',
         tool_call_id: 'toolu_1',
         content: 'file contents',
       });
-      expect(result[1]).toEqual({ role: 'user', content: 'and now continue' });
+      expect(result[2]).toEqual({ role: 'user', content: 'and now continue' });
     });
 
     it('renders nested tool_result content blocks', () => {
       const result = convertMessages([
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }],
+        },
         {
           role: 'user',
           content: [
@@ -127,7 +135,7 @@ describe('request translation', () => {
         },
       ]);
 
-      expect(result[0].content).toBe('line one');
+      expect(result[1].content).toBe('line one');
     });
 
     it('converts base64 images to data URI image_url parts', () => {
@@ -200,6 +208,13 @@ describe('request translation', () => {
     it('emits multiple tool_result blocks before remaining user text', () => {
       const result = convertMessages([
         {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Read', input: {} },
+            { type: 'tool_use', id: 't2', name: 'Grep', input: {} },
+          ],
+        },
+        {
           role: 'user',
           content: [
             { type: 'tool_result', tool_use_id: 't1', content: 'one' },
@@ -209,10 +224,70 @@ describe('request translation', () => {
         },
       ]);
 
-      expect(result).toEqual([
+      expect(result.slice(1)).toEqual([
         { role: 'tool', tool_call_id: 't1', content: 'one' },
         { role: 'tool', tool_call_id: 't2', content: 'two' },
         { role: 'user', content: 'continue' },
+      ]);
+    });
+
+    // Copilot rejects the whole request when a tool reply has no matching
+    // tool_calls entry, which happens once Claude Code trims the issuing
+    // assistant turn out of the context window.
+    it('drops tool results whose issuing assistant turn is gone', () => {
+      const result = convertMessages([
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'gone', content: 'stale' },
+            { type: 'text', text: 'continue' },
+          ],
+        },
+      ]);
+
+      expect(result).toEqual([{ role: 'user', content: 'continue' }]);
+    });
+
+    // A cancelled or denied tool call leaves tool_calls with no reply, which
+    // Copilot also rejects — wedging every later turn in the session.
+    it('synthesises a reply for a tool call that was never answered', () => {
+      const result = convertMessages([
+        { role: 'user', content: 'run it' },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }],
+        },
+        { role: 'user', content: 'never mind' },
+      ]);
+
+      expect(result.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'user']);
+      expect(result[2]).toMatchObject({ role: 'tool', tool_call_id: 't1' });
+    });
+
+    it('synthesises a reply when the conversation ends on an unanswered call', () => {
+      const result = convertMessages([
+        { role: 'user', content: 'run it' },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }],
+        },
+      ]);
+
+      expect(result.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+    });
+
+    it('drops a duplicate reply to the same tool call', () => {
+      const result = convertMessages([
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }],
+        },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'a' }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'b' }] },
+      ]);
+
+      expect(result.filter((m) => m.role === 'tool')).toEqual([
+        { role: 'tool', tool_call_id: 't1', content: 'a' },
       ]);
     });
 

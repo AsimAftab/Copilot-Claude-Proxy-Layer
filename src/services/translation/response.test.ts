@@ -341,6 +341,56 @@ describe('response translation', () => {
       }
     });
 
+    // Copilot commonly ends a tool-calling stream with finish_reason "stop".
+    // Claude Code only dispatches tools on stop_reason "tool_use", so without
+    // the override the tool renders and the turn hangs forever.
+    it('forces stop_reason tool_use when a tool block was emitted', () => {
+      const t = new StreamTranslator();
+      t.translate(
+        chunk({ tool_calls: [{ index: 0, id: 'c1', function: { name: 'Bash', arguments: '{}' } }] })
+      );
+      t.translate(chunk({}, 'stop'));
+
+      const events = t.finish(5);
+      expect(events.find((e) => e.event === 'message_delta')?.data).toMatchObject({
+        delta: { stop_reason: 'tool_use' },
+      });
+    });
+
+    it('keeps max_tokens over tool_use when the turn was truncated', () => {
+      const t = new StreamTranslator();
+      t.translate(
+        chunk({ tool_calls: [{ index: 0, id: 'c1', function: { name: 'Bash', arguments: '{' } }] })
+      );
+      t.translate(chunk({}, 'length'));
+
+      const events = t.finish(5);
+      expect(events.find((e) => e.event === 'message_delta')?.data).toMatchObject({
+        delta: { stop_reason: 'max_tokens' },
+      });
+    });
+
+    // Anthropic content block indices must be gapless and ascending; a nameless
+    // call that gets discarded used to burn an index and desync the client.
+    it('emits gapless ascending block indices when a nameless call is dropped', () => {
+      const t = new StreamTranslator();
+      const events = [
+        ...t.translate(chunk({ tool_calls: [{ index: 0, id: 'orphan' }] })),
+        ...t.translate(
+          chunk({ tool_calls: [{ index: 1, id: 'c2', function: { name: 'Read', arguments: '{}' } }] })
+        ),
+        ...t.finish(),
+      ];
+
+      const starts = events.filter((e) => e.event === 'content_block_start');
+      expect(starts).toHaveLength(1);
+      expect(starts[0].data).toMatchObject({ index: 0 });
+
+      const stops = events.filter((e) => e.event === 'content_block_stop');
+      expect(stops).toHaveLength(1);
+      expect(stops[0].data).toMatchObject({ index: 0 });
+    });
+
     it('emits closing events with the mapped stop reason', () => {
       const t = new StreamTranslator();
       t.translate(chunk({ content: 'hi' }));

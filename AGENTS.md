@@ -59,6 +59,16 @@ These were discovered by probing the live API. Violating them silently breaks th
    Copilot rejects a system turn placed after user/assistant content.
 8. **OAuth tokens persist to `COPILOT_PROXY_DATA_DIR`** (default `~/.github-copilot-proxy`, `/data`
    in Docker). Anything containerised must mount that path or every rebuild forces a re-login.
+9. **Copilot ends tool-calling turns with `finish_reason: "stop"`**, not `"tool_calls"`. Claude Code
+   only dispatches a tool when `stop_reason` is `"tool_use"`, so the stop reason must be forced
+   whenever a `tool_use` block was produced — otherwise the tool renders and the turn hangs forever.
+10. **Anthropic content-block indices must be gapless and ascending.** Allocate the index when a
+    block is actually emitted, never when it is first buffered; a tool call that ends up discarded
+    (e.g. its name never arrived) would otherwise burn an index and desync the client.
+11. **Tool pairing must be repaired, not assumed.** A denied or cancelled tool call leaves
+    `tool_calls` with no reply, and a trimmed context window leaves a reply with no call. Copilot
+    400s on either, which reads to Claude Code as an unusable response and wedges the session — so
+    `convertMessages` drops orphaned replies and synthesises missing ones.
 
 ## Development
 
