@@ -85,7 +85,10 @@ export type ContentBlock =
  * A message in the conversation
  */
 export interface AnthropicMessage {
-  role: 'user' | 'assistant';
+  // Claude Code 2.1.x appends a trailing `system` message inside `messages`
+  // (the Agent-tool catalog). It is hoisted into the system prompt on
+  // translation rather than rejected.
+  role: 'user' | 'assistant' | 'system';
   content: string | ContentBlock[];
 }
 

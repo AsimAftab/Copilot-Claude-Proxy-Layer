@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- **`400 messages: each message must have a valid role`** with Claude Code 2.1.x — Claude Code
+  appends a `role: "system"` message *inside* `messages` (the Agent-tool catalog). The proxy now
+  accepts it and hoists its text into the leading system prompt, since Copilot rejects a system
+  turn that follows user/assistant content
+
 ### Added
 - **One-command Claude Code setup** — `npm run setup:claude` (or `copilot-claude-proxy configure`)
   renames any existing Claude Code configuration (`~/.claude/settings.json`,

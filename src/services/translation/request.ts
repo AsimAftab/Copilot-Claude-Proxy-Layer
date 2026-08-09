@@ -203,12 +203,22 @@ export function convertMessages(
 ): OpenAIChatMessage[] {
   const result: OpenAIChatMessage[] = [];
 
-  const systemPrompt = flattenSystemPrompt(system);
+  // Claude Code appends `role:"system"` messages inside `messages`. Copilot
+  // rejects a system turn after user/assistant content, so they are hoisted
+  // into the leading system prompt instead of being emitted in place.
+  const inlineSystem = messages
+    .filter((msg) => msg.role === 'system')
+    .map((msg) => extractTextContent(msg.content))
+    .filter(Boolean)
+    .join('\n\n');
+
+  const systemPrompt = [flattenSystemPrompt(system), inlineSystem].filter(Boolean).join('\n\n');
   if (systemPrompt) {
     result.push({ role: 'system', content: systemPrompt });
   }
 
   for (const message of messages) {
+    if (message.role === 'system') continue;
     result.push(...convertMessage(message));
   }
 

@@ -196,8 +196,8 @@ function validateRequest(request: AnthropicMessageRequest): string | null {
   }
 
   for (const msg of request.messages) {
-    if (!msg.role || !['user', 'assistant'].includes(msg.role)) {
-      return 'messages: each message must have a valid role (user or assistant)';
+    if (!msg.role || !['user', 'assistant', 'system'].includes(msg.role)) {
+      return 'messages: each message must have a valid role (user, assistant or system)';
     }
     if (msg.content === undefined || msg.content === null) {
       return 'messages: each message must have content';

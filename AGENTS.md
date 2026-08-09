@@ -53,6 +53,9 @@ These were discovered by probing the live API. Violating them silently breaks th
    `role:"tool"` messages before any further user content.
 6. **Express 4 does not catch async handler rejections** and `uncaughtException` exits the process.
    Wrap every async route handler in try/catch.
+7. **Claude Code sends `role:"system"` messages inside `messages`** (2.1.x appends the Agent-tool
+   catalog as a trailing system turn). Accept it and hoist the text into the leading system prompt —
+   Copilot rejects a system turn placed after user/assistant content.
 
 ## Development
 

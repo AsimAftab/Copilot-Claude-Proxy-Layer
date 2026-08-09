@@ -40,6 +40,33 @@ describe('request translation', () => {
       expect(result[1]).toEqual({ role: 'user', content: 'hi' });
     });
 
+    it('hoists inline system messages into the leading system prompt', () => {
+      const result = convertMessages(
+        [
+          { role: 'user', content: 'hi' },
+          { role: 'system', content: [{ type: 'text', text: 'agent catalog' }] },
+        ],
+        [{ type: 'text', text: 'sys' }]
+      );
+
+      expect(result).toEqual([
+        { role: 'system', content: 'sys\n\nagent catalog' },
+        { role: 'user', content: 'hi' },
+      ]);
+    });
+
+    it('hoists an inline system message even without a top-level system prompt', () => {
+      const result = convertMessages([
+        { role: 'user', content: 'hi' },
+        { role: 'system', content: 'catalog' },
+      ]);
+
+      expect(result).toEqual([
+        { role: 'system', content: 'catalog' },
+        { role: 'user', content: 'hi' },
+      ]);
+    });
+
     it('converts assistant tool_use into OpenAI tool_calls', () => {
       const messages: AnthropicMessage[] = [
         {
